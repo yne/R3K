@@ -1,0 +1,76 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+<style>
+.tool>*{
+	display:block;
+	text-align: right;
+}
+.tool {
+	position: absolute;
+	border: 1px solid #000;
+	border-radius: 5px;
+	padding: 5px;
+	right: 50%;
+	bottom: 2em;
+	background: #FFF;
+}
+textarea{
+	resize: none;
+	position: absolute;
+	width: 50%;
+	height: 100%;
+	top: 0;
+	padding: 0;
+	margin: 0;
+	border:0;
+	box-shadow: 0px 0px 2px #000 inset;
+}
+</style>
+<script>var mips={};Disassembler={setInstructions:function(name,ins){mips=ins}}</script>
+<script src="https://raw.githubusercontent.com/yne/jda/master/disassembler.instructions.mips.js"></script>
+<script>
+function asm(src){
+	return Uint32Array(src.split('\n').map(function(l){
+		if(!(l=l.replace(/#.*/g,'')))return null;//skip empty line/comment
+		if(l[0]==':')return l.toLowerCase();
+		args=l.split(/[\(\),\s\t]+/);
+		var instr=mips[args[0].toLowerCase()];
+		if(!instr)console.log(args[0],"unknow instr");
+		var result=instr[0];
+		instr[2].split(/,/g).forEach(function(arg,i){
+			if(args[i+1] && args[i+1][0]=='$')
+				args[i+1]=regName.indexOf(args[i+1].slice(1));
+			else if(args[i+1] && args[i+1][0].toLowerCase()=='r')
+				args[i+1]=+args[i+1].slice(1);
+			result |= (args[i+1]<<arg_list[arg][1]);
+		});
+		return result;
+	}));
+}
+</script>
+</head>
+<body onload="document.getElementById('ori').onkeyup()">
+<textarea id="ori" spellcheck="false" onkeyup="var bin='',e=asm(this.value);for(var i=0;i<e.length;i++)bin+=('00000000000000000000000000000000'+e[i].toString(2)).slice(-32)+'\n';document.getElementById('mod').value=bin;" placeholder="paste source here" style="left :0;">
+addiu $a0, $ra, 0xFF	# Address of path string relative to start of code (0xCC)
+ll $a1, 1	# Read only
+ll $a2, 0x1FF	# Full access mode
+jal 0x088F5A90	# sceIoOpen
+nop
+add $s0, $zr, $v0 # Backup file descriptor for sceIoClose
+add $a0, $zr, $v0 # Use return value as argument 0
+lui $a1, 0x08D0	# Load address for binary
+ll $a2, 0x67D8	# Read 27 KB from file
+jal 0x088F5A50	# sceIoRead
+nop
+add $a0, $zr, $s0 # Put file descriptor in $a0
+jal 0x088F5A60	# sceIoClose
+nop
+jal 0x088F5C50	# sceKernelDcacheWritebackInvalidateAll
+nop
+lui $a0, 0x08D0	# Put location of binary in memory in $a0
+jr $a0	# Jump to location of binary in memory
+</textarea>
+<textarea id="mod" spellcheck="false" readonly placeholder="see result here" style="right:0;color: #666;"></textarea>
+</body>
+</html>

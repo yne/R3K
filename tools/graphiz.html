@@ -1,0 +1,112 @@
+﻿<!DOCTYPE HTML>
+<html>
+<head>
+<style>
+.tool>*{
+	display:block;
+	text-align: right;
+}
+.tool {
+	position: absolute;
+	border: 1px solid #000;
+	border-radius: 5px;
+	padding: 5px;
+	margin-right:32px;
+	right: 50%;
+	bottom: 2em;
+	background: #FFF;
+}
+#in,#out{
+	resize: none;
+	position: absolute;
+	width: 50%;
+	height: 100%;
+	top: 0;
+	padding: 0;
+	margin: 0;
+	border:0;
+	box-shadow: 0px 0px 2px #000 inset;
+}
+</style>
+<script>
+function vhdl_parse(src){
+//fix untill sticky flag get supported on every browser
+	String.prototype.matches=function(reg){//regExp must be /g/lobal
+		var subreg=new RegExp(reg.source,(reg.ignoreCase?'i':'')+(reg.multiline?'m':''));
+		return (this.match(reg)||[]).map(function(m){
+			return m.match(subreg);
+		});
+	}
+	var v=src
+		.replace(/--.*/g,'')
+		.replace(/(use|library) .*/gi,'')
+		.replace(/[\r|\n]/g,'');
+	var global = {};
+	// ENTITY
+	(v.matches(/entity\s+(\w+)\s+is(.*?)end\s*\w+\s*;/g)||[]).forEach(function(entity){
+		var e=global[entity[1]]={signals:{},processes:{},entities:{},port:{},generic:{}}
+		entity[2].match(/generic\s*\((.*?)\)*\)/)[1].matches(/(\w+)\s*:\s*(\w+)/g).forEach(function(a){e.generic[a[1]]={type:a[2]}});
+		entity[2].match(/port\s*\((.*?)\)*\)/)[1].matches(/(\w+)\s*:\s*(\w+)\s*(\w+)/g).forEach(function(a){e.port[a[1]]={way:a[2],type:a[3]}});
+	});
+	// BEHAVIOR
+	(v.matches(/architecture\s+behavior\s+of\s+(\w+)\s+is(.*?)begin(.*?)end\s+behavior\s*;/g)||[]).forEach(function(behavior){
+		var be=global[behavior[1]];//shorthand
+		//signals
+		(behavior[2].matches(/signal\s*(\w+)\s*:\s*(\w+)\s*;/g)||[]).forEach(function(sig){
+			be.signals[sig[1]]={type:sig[2]}
+		});
+		//processes
+		(behavior[3].matches(/(\w+)\s*:\s*process\s*\((.*?)\)(.*?)begin(.*?)end\s+process\s+\w+;/g)||[]).forEach(function(pro){
+			be.processes[pro[1]]={params:pro[2].split(','),statements:pro[3],code:pro[4]};
+		});
+		//entities
+		(behavior[3].matches(/(\w+)\s*:\s*entity\s*([\.\w]+)\s*\(.*?\)(.*?);/g)||[]).forEach(function(ent){
+			var tmp=be.entities[ent[1]]={type:ent[2],generic:{},port:{}};
+			//extract maps from code
+			ent[3].match(/generic\s+map\s*\((.*?)\)*\)/)[1].matches(/(\w+)\s*=>\s*([\w\.]+)/g).forEach(function(a){tmp.generic[a[1]]=a[2]});
+			ent[3].match(/port\s+map\s*\((.*?)\)*\)/)[1].matches(/(\w+)\s*=>\s*([\w\.]+)/g).forEach(function(a){tmp.port[a[1]]=a[2]});
+		});
+	});
+	return global;
+}
+function vhdl_draw(graph,src){
+	var gv="";
+	function getassign(code){
+		return code.matches(/([\w\.]+)[\('\)\w\.]*\s*<=\s*([\w\.]+)[\('\)\w\.]*/g)
+	}
+	for(var name in graph){
+		gv+="digraph "+name+"{\nrankdir=LR\n";
+		for(var signal in graph[name].signals){
+			gv+=""+signal+";\n"
+		}
+		for(var process in graph[name].processes){
+			gv+="subgraph cluster_"+process+" {node [style=filled];color=blue;label=\""+process+"\";"+
+				getassign(graph[name].processes[process].code).map(function(a){
+					return '"'+a[2]+'" -> "'+a[1]+'"';
+				}).join('\n')
+			+"}\n"
+		}
+		for(var entity in graph[name].entities){
+			gv+="subgraph cluster_"+entity+" {node [style=filled];color=red;label=\""+entity+"\";"
+			for(var port in graph[name].entities[entity].port){
+				gv+=port+';';
+				console.log(graph[name].entities[entity].port[port])
+				//search where () is read/write in the code
+			}
+			gv+="}";
+		}
+		gv+="}";
+	}
+	return gv;
+}
+</script>
+</head>
+<body>
+<textarea id="in" spellcheck="false" placeholder="paste risc.vhdl here" style="left:0;"></textarea>
+<div id="out" spellcheck="false" readonly placeholder="see graph here" style="right:0;overflow: scroll;"></div>
+<div class="tool">
+	<button onclick="document.getElementById('out').innerHTML=V=Viz(D=vhdl_draw(P=vhdl_parse(document.getElementById('in').value)),'svg');">convert</button>
+</div>
+<script src="http://mdaines.github.io/viz.js/viz.js"></script>
+</body>
+</html>
